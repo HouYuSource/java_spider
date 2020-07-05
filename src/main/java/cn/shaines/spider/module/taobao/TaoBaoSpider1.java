@@ -6,6 +6,7 @@ import cn.shaines.spider.util.FastHttpClient.ResponseHandler;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.JSONPath;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 
@@ -15,29 +16,56 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 /**
- * @author houyu
+ * @author for.houyu@qq.com
  */
-public class DemoSpider {
+@Slf4j
+public class TaoBaoSpider1 {
 
     private static final String listUrlTemplate = "https://s.taobao.com/search?q=${keywords}&s=${index}";
-    private static String cookie = "enc=l5xju4OJMzTwwtBkVJWbvFPcQ%2B6n6%2FWdRaE4iECxQOQiEtA45RBOyXQu0gZbOcIVEO6oxrRWvtu6mgSv4JZa8w%3D%3D; thw=cn; hng=CN%7Czh-CN%7CCNY%7C156; sgcookie=ESMDjIxrMIKwi48qmS8xP; tfstk=cCOGBNOa3dW_xoWHFf16ovEkfpHRZKNVqIRBTCGS8wNPBsdFiO2UUAat-GxMM-1..; tracknick=; cna=8XsbF0X0cVkCAbcg0Pt/qWLy; JSESSIONID=497FFF3038140BE5C8CF61B91D1F1E95; isg=BAoK4i6EYLrUqux9UqycLrh2W_Cs-45V17MBMZRHK932R6gBfI62ZR3xV7ObiQbt; l=eBMkD1V4QZHXKy0vBO5ZPurza77OgCRbzAVzaNbMiInca1SfTUINWNQD-OA97dtjgtfbsetrb3kJjRHkrG4dg2HvCbKrCyCk4Yp6-";
+    private static String cookie = "enc=l5xju4OJMzTwwtBkVJWbvFPcQ%2B6n6%2FWdRaE4iECxQOQiEtA45RBOyXQu0gZbOcIVEO6oxrRWvtu6mgSv4JZa8w%3D%3D; thw=cn; hng=CN%7Czh-CN%7CCNY%7C156; sgcookie=ESMDjIxrMIKwi48qmS8xP; tfstk=cCOGBNOa3dW_xoWHFf16ovEkfpHRZKNVqIRBTCGS8wNPBsdFiO2UUAat-GxMM-1..; tracknick=; cna=8XsbF0X0cVkCAbcg0Pt/qWLy; t=bb72251ba9e04aa4ffe5119a746b1f35; v=0; cookie2=1d43fd087e0cf8b4268f2e8ddcd4aea0; _tb_token_=e30835115bdfe; alitrackid=www.taobao.com; lastalitrackid=www.taobao.com; JSESSIONID=07CB217DBB9367EF2E0CCF7AF29AA9A0; isg=BDo6WaueMbQrb7zN4rxs3mhmi2Bc677FZ6MxoUQ_y0y9N99xLH6N1UYBh8PrpzZd; l=eBMkD1V4QZHXKy_vBO5whurza77ONdAfCsPzaNbMiInca6ZFN1uJuNQqG5uBldtjgtfj7etrb3kJjRUpziUdg2HvCbKrCyCk6Yp6-";
 
     private FastHttpClient httpClient;
     private BufferedWriter writer;
+    private Set<String> filter;
 
     public static void main(String[] args) throws Exception {
-        DemoSpider spider = new DemoSpider();
-        spider.init();
-        String html = spider.getListHtml("安踏篮球鞋男鞋", 0);
-        List<Goods> list  = spider.parse(html);
-        list.forEach(v -> {
-            List<String> row = Arrays.asList(v.getRaw_title(), v.getView_price(), v.getView_fee(), v.getNick(), v.getItem_loc(), v.getView_sales(), v.getPic_url(), v.getDetail_url(), v.getComment_url(), v.getShopLink(), "_" + v.getNid(), "_" + v.getPid());
-            spider.writeRow(row);
-        });
+        // 搜索关键字
+        final String keywords = "安踏篮球鞋男鞋";
+        // 每页44条数据
+        final int limit = 44;
+        TaoBaoSpider1 spider = new TaoBaoSpider1();
+        spider.init(keywords);
+        for (int page = 0; page <= 99; page++) {
+            log.info("正在准备下载页数: {}", page + 1);
+            String html = spider.getListHtml(keywords, page * limit);
+            List<Goods> list  = spider.parse(html);
+            log.info("解析得到数量: [{}]", list.size());
+            if (list.isEmpty()) {
+                break;
+            }
+            list = spider.doFilter(list);
+            log.info("过滤后数量: [{}]", list.size());
+            list.forEach(v -> {
+                List<String> row = Arrays.asList(v.getRaw_title(), v.getView_price(), v.getView_fee(), v.getNick(), v.getItem_loc(), v.getView_sales(), v.getPic_url(), v.getDetail_url(), v.getComment_url(), v.getShopLink(), "_" + v.getNid(), "_" + v.getPid());
+                spider.writeRow(row);
+            });
+            // 睡眠3 ~ 10秒
+            Thread.sleep(ThreadLocalRandom.current().nextLong(3000, 10000));
+            log.info("\r\n");
+        }
+    }
+
+    private List<Goods> doFilter(List<Goods> list) {
+        list = list.stream().filter(v -> !filter.contains(v.getNid())).collect(Collectors.toList());
+        filter.addAll(list.stream().map(Goods::getNid).collect(Collectors.toSet()));
+        return list;
     }
 
     /**
@@ -97,7 +125,7 @@ public class DemoSpider {
     protected String getListHtml(String keywords, int index) {
         // 中文进行URL编码
         keywords = FastHttpClient.encodeURLText(keywords, StandardCharsets.UTF_8);
-        String url = listUrlTemplate.replace("${keywords}", keywords).replace("{index}", index + "");
+        String url = listUrlTemplate.replace("${keywords}", keywords).replace("${index}", index + "");
         // 创建一个GET请求
         HttpGet httpGet = httpClient.buildGet(url);
         // 执行请求, 获取响应
@@ -108,12 +136,13 @@ public class DemoSpider {
     /**
      * 资源初始化
      */
-    protected void init() {
+    protected void init(String keywords) {
         // 初始化 httpClient 并且设置 cookie 每次请求都会携带cookie信息
         httpClient = FastHttpClient.builder().setCookie(cookie).build();
+        filter = new HashSet<>(1024);
         try {
             // 初始化 CSV 文件呢
-            writer = new BufferedWriter(new FileWriter(new File("C:\\Users\\houyu\\Desktop\\taobao.csv"), false));
+            writer = new BufferedWriter(new FileWriter(new File("C:\\Users\\houyu\\Desktop\\" + keywords + ".csv"), false));
             // 准备header
             List<String> header = Arrays.asList("标题", "单价", "运费", "店名", "发货地址", "售量", "首页图", "明细地址", "评论地址", "购买地址", "nid", "pid");
             this.writeRow(header);
@@ -265,7 +294,4 @@ public class DemoSpider {
         }
     }
 
-
-
 }
-
