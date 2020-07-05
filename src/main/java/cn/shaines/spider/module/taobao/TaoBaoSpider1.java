@@ -15,6 +15,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -142,7 +143,9 @@ public class TaoBaoSpider1 {
         filter = new HashSet<>(1024);
         try {
             // 初始化 CSV 文件呢
-            writer = new BufferedWriter(new FileWriter(new File("C:\\Users\\houyu\\Desktop\\" + keywords + ".csv"), false));
+            File file = Paths.get(System.getProperty("user.dir"), "temp", "spider", keywords + ".csv").toFile();
+            file.getParentFile().mkdirs();
+            writer = new BufferedWriter(new FileWriter(file, false));
             // 准备header
             List<String> header = Arrays.asList("标题", "单价", "运费", "店名", "发货地址", "售量", "首页图", "明细地址", "评论地址", "购买地址", "nid", "pid");
             this.writeRow(header);
