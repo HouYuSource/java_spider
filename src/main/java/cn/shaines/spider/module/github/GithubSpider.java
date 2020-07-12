@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
  * @author houyu
  */
 @Slf4j
-public class GithubBackupsSpider {
+public class GithubSpider {
 
     /** github 登录地址 */
     private static final String loginUrl = "https://github.com/login";
